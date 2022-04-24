@@ -3,3 +3,4 @@ current/
 *.npy
 a.out
 roms/
+.gdb_history
