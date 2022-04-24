@@ -208,8 +208,7 @@ public:
 
       // Add constant to register.
       case (0x7000): {
-        variable_registers_[register1(instruction)] +=
-            instruction & constant8(instruction);
+        variable_registers_[register1(instruction)] += constant8(instruction);
         break;
       }
 
