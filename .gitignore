@@ -1,0 +1,5 @@
+current/
+.DS_Store
+*.npy
+a.out
+roms/
