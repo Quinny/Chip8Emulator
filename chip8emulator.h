@@ -268,8 +268,8 @@ public:
         break;
       }
 
-        // Draws the bitmap sprite pointed to by the index register to the
-        // screen.
+      // Draws the bitmap sprite pointed to by the index register to the
+      // screen.
       case (0xD000): {
         auto row_start = variable_registers_[register2(instruction)] % 32;
         auto col_start = variable_registers_[register1(instruction)] % 64;
