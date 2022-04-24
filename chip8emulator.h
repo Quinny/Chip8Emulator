@@ -279,7 +279,7 @@ public:
         for (int sprite_row_offset = 0; sprite_row_offset < height;
              ++sprite_row_offset) {
           auto row = row_start + sprite_row_offset;
-          if (row > display_.size()) {
+          if (row >= display_.size()) {
             break;
           }
 
@@ -287,7 +287,7 @@ public:
           for (int sprite_col_offset = 0; sprite_col_offset < 8;
                ++sprite_col_offset) {
             auto col = col_start + sprite_col_offset;
-            if (col > display_[row].size()) {
+            if (col >= display_[row].size()) {
               break;
             }
 
@@ -297,7 +297,7 @@ public:
             if (set) {
               display_[row][col] ^= 1;
               if (before) {
-                variable_registers_[0xF] |= 1;
+                variable_registers_[0xF] = 1;
               }
             }
           }
