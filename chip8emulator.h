@@ -16,7 +16,9 @@ public:
         // Execute at most 1 instruction per millisecond to emulate the speed
         // at which most Chip8 games were made to be run at. Without clock
         // regulation the games run way to fast.
-        clock_regulator_(/* milliseconds_per_cycle = */ 1) {
+        cpu_clock_regulator_(/* milliseconds_per_cycle = */ 1),
+        // Reduce the delay counter at 60hz (1000ms/60 = ~17ms).
+        delay_clock_regulator_(/* milliseconds_per_cycle = */ 17) {
     // The original Chip-8 interpreter stored the first byte of the program
     // at address 200 and so many programs rely on this.
     std::ifstream file_stream(rom_file_path);
@@ -125,14 +127,14 @@ public:
   // constructor. This call will block until the graphics window is closed.
   void BlockingExecute() {
     while (screen_.PollEvent()) {
-      // Regulate program speed to prevent the game from running too fast.
-      if (!clock_regulator_.Tick()) {
-        continue;
+      // Decrement the delay timer if it's set and on tick schedule.
+      if (delay_timer_ > 0 && delay_clock_regulator_.Tick()) {
+        delay_timer_--;
       }
 
-      // Decrement the delay timer if it's set.
-      if (delay_timer_ > 0) {
-        delay_timer_--;
+      // Regulate program speed to prevent the game from running too fast.
+      if (!cpu_clock_regulator_.Tick()) {
+        continue;
       }
 
       // Each Chip8 instruction is two bytes, so we read the next two bytes of
@@ -400,6 +402,7 @@ private:
   Screen screen_;
   std::vector<int> key_mapping_;
   int delay_timer_ = 0;
-  ClockRegulator clock_regulator_;
+  ClockRegulator cpu_clock_regulator_;
+  ClockRegulator delay_clock_regulator_;
   int font_address_ = 0x050;
 };
