@@ -1,5 +1,5 @@
 all:
-	g++ -std=c++17 main.cc -lsdl2 -Wall
+	g++ -std=c++17 main.cc -lsdl2 -lsdl2_ttf -Wall
 
 debug:
-	g++ -std=c++17 main.cc -lsdl2 -Wall -D DEBUG
+	g++ -std=c++17 main.cc -lsdl2 -lsdl2_ttf -Wall -D DEBUG

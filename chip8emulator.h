@@ -1,6 +1,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -13,12 +14,12 @@ public:
       // Initialize 4kib of RAM memory and 16 1-byte registers.
       : memory_(4096, 0), variable_registers_(16, 0),
         screen_("Chip 8 Emulator"),
-        // Execute at most 1 instruction per millisecond to emulate the speed
+        // Execute at most 1 instruction per 2 milliseconds to emulate the speed
         // at which most Chip8 games were made to be run at. Without clock
         // regulation the games run way to fast.
-        cpu_clock_regulator_(/* milliseconds_per_cycle = */ 1),
-        // Reduce the delay counter at 60hz (1000ms/60 = ~17ms).
-        delay_clock_regulator_(/* milliseconds_per_cycle = */ 17) {
+        cpu_clock_regulator_(/* milliseconds_per_cycle = */ 2),
+        // Draw the screen once per 17ms (~60hz).
+        draw_screen_regulator_(/* milliseconds_per_cycle = */ 17) {
     // The original Chip-8 interpreter stored the first byte of the program
     // at address 200 and so many programs rely on this.
     std::ifstream file_stream(rom_file_path);
@@ -81,6 +82,9 @@ public:
       memory_[font_load_location] = font_byte;
       ++font_load_location;
     }
+
+    // Register the "P" key to pause the game.
+    screen_.OnKeyDown(SDL_SCANCODE_P, [this]() { paused_ = !paused_; });
   }
 
   // Chip8 Instructions commonly come either of form:
@@ -127,13 +131,21 @@ public:
   // constructor. This call will block until the graphics window is closed.
   void BlockingExecute() {
     while (screen_.PollEvent()) {
-      // Decrement the delay timer if it's set and on tick schedule.
-      if (delay_timer_ > 0 && delay_clock_regulator_.Tick()) {
-        delay_timer_--;
+      // Refresh the screen and update the delay timer.
+      if (draw_screen_regulator_.Tick()) {
+        if (!paused_ && delay_timer_ > 0) {
+          delay_timer_--;
+        }
+
+        screen_.Clear(Color::Black());
+        DrawBottomBar();
+        DrawGameDisplay();
+        screen_.Update();
       }
 
-      // Regulate program speed to prevent the game from running too fast.
-      if (!cpu_clock_regulator_.Tick()) {
+      // Regulate program instruction processing speed to prevent the game from
+      // running too fast.
+      if (paused_ || !cpu_clock_regulator_.Tick()) {
         continue;
       }
 
@@ -257,7 +269,6 @@ public:
       }
 
       // Jump by offset.
-      // TODO: Ambiguous
       case (0xB000): {
         program_counter_ = constant12(instruction) + variable_registers_[0];
         break;
@@ -305,31 +316,6 @@ public:
           }
         }
 
-        // Determine the scaling factors required to fit the chip8 display
-        // memory fully to the screen.
-        auto x_scale = screen_.width() / display_.front().size();
-        // Leave some space at the bottom of the screen to prevent clipping.
-        auto y_scale = (screen_.height() / display_.size()) - 3;
-
-        // Generate a vector of all the filled rectangles that need to be drawn.
-        std::vector<SDL_Rect> rects_to_draw;
-        for (int row = 0; row < display_.size(); ++row) {
-          for (int col = 0; col < display_[row].size(); ++col) {
-            if (display_[row][col]) {
-              SDL_Rect r;
-              r.x = col * x_scale;
-              r.y = row * y_scale;
-              r.w = x_scale;
-              r.h = y_scale;
-              rects_to_draw.push_back(r);
-            }
-          }
-        }
-
-        // Update the screen.
-        screen_.Clear(Color::Black());
-        screen_.DrawRects(rects_to_draw, Color::White());
-        screen_.Update();
         break;
       }
 
@@ -338,6 +324,9 @@ public:
         auto skip_state = (instruction & 0x00FF) == 0X009E;
         auto key_code =
             key_mapping_[variable_registers_[register1(instruction)]];
+        // Keep track of which keys the game has polled to give a hint of what
+        // the controls for the game are in the bottom bar.
+        keys_polled_.insert(SDL_GetScancodeName(key_code));
         if (screen_.IsPressed(key_code) == skip_state) {
           program_counter_ += 2;
         }
@@ -393,6 +382,60 @@ public:
   }
 
 private:
+  // Draw the actual game video memory to the screen.
+  void DrawGameDisplay() {
+    // Determine the scaling factors required to fit the chip8 display
+    // memory fully to the screen.
+    auto x_scale = screen_.width() / display_.front().size();
+    // Leave some space at the bottom of the screen to draw some status info.
+    auto y_scale = (screen_.height() - kBottomBarHeight) / display_.size();
+
+    // Generate a vector of all the filled rectangles that need to be drawn.
+    std::vector<SDL_Rect> rects_to_draw;
+    for (int row = 0; row < display_.size(); ++row) {
+      for (int col = 0; col < display_[row].size(); ++col) {
+        if (display_[row][col]) {
+          SDL_Rect r;
+          r.x = col * x_scale;
+          r.y = row * y_scale;
+          r.w = x_scale;
+          r.h = y_scale;
+          rects_to_draw.push_back(r);
+        }
+      }
+    }
+
+    // Update the screen.
+    screen_.DrawRects(rects_to_draw, Color::White());
+  }
+
+  // Draws the bottom status bar to the screen.
+  void DrawBottomBar() {
+    constexpr int kPadding = 10;
+    auto start_y = screen_.height() - kBottomBarHeight;
+    SDL_Rect divider{.x = 0, .y = start_y, .w = screen_.width(), .h = 3};
+    screen_.DrawRects({divider}, Color::White());
+
+    std::string keys = "Controls: ";
+    for (auto key_it = keys_polled_.begin(); key_it != keys_polled_.end();
+         ++key_it) {
+      keys += *key_it;
+      if (std::next(key_it) != keys_polled_.end()) {
+        keys += ", ";
+      }
+    }
+    auto controls_rect =
+        screen_.DrawText(keys, 50, start_y + kPadding, Color::White());
+    auto timer_rect =
+        screen_.DrawText("Timer: " + std::to_string(delay_timer_),
+                         controls_rect.x + controls_rect.w + kPadding * 2,
+                         start_y + kPadding, Color::White());
+    if (paused_) {
+      screen_.DrawText("PAUSED", timer_rect.x + timer_rect.w + kPadding * 2,
+                       start_y + kPadding, Color::Red());
+    }
+  }
+
   std::vector<unsigned char> memory_;
   std::vector<uint16_t> stack_;
   uint16_t program_counter_ = 0x200;
@@ -400,9 +443,12 @@ private:
   int index_register_ = 0;
   std::vector<std::vector<unsigned char>> display_;
   Screen screen_;
-  std::vector<int> key_mapping_;
+  std::vector<SDL_Scancode> key_mapping_;
   int delay_timer_ = 0;
   ClockRegulator cpu_clock_regulator_;
-  ClockRegulator delay_clock_regulator_;
+  ClockRegulator draw_screen_regulator_;
   int font_address_ = 0x050;
+  std::set<std::string> keys_polled_;
+  static constexpr int kBottomBarHeight = 100;
+  bool paused_ = false;
 };
