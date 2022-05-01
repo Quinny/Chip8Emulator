@@ -386,9 +386,11 @@ private:
   void DrawGameDisplay() {
     // Determine the scaling factors required to fit the chip8 display
     // memory fully to the screen.
-    auto x_scale = screen_.width() / display_.front().size();
-    // Leave some space at the bottom of the screen to draw some status info.
-    auto y_scale = (screen_.height() - kBottomBarHeight) / display_.size();
+    auto scale =
+        std::min(screen_.width() / display_.front().size(),
+                 // Leave some space at the bottom of the screen to
+                 // draw some status info.
+                 (screen_.height() - kBottomBarHeight) / display_.size());
 
     // Generate a vector of all the filled rectangles that need to be drawn.
     std::vector<SDL_Rect> rects_to_draw;
@@ -396,10 +398,10 @@ private:
       for (int col = 0; col < display_[row].size(); ++col) {
         if (display_[row][col]) {
           SDL_Rect r;
-          r.x = col * x_scale;
-          r.y = row * y_scale;
-          r.w = x_scale;
-          r.h = y_scale;
+          r.x = col * scale;
+          r.y = row * scale;
+          r.w = scale;
+          r.h = scale;
           rects_to_draw.push_back(r);
         }
       }

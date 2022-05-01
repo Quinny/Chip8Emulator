@@ -57,7 +57,9 @@ public:
   int height() { return height_; }
 
   // Check if the provided key is currently pressed.
-  bool IsPressed(SDL_Scancode key) { return key_pressed_[key]; }
+  bool IsPressed(SDL_Scancode key) {
+    return *(SDL_GetKeyboardState(/* numkeys = */ nullptr) + key);
+  }
 
   // Fire `handler` when to provided key is pressed down.
   void OnKeyDown(SDL_Scancode key, std::function<void()> handler) {
@@ -77,15 +79,10 @@ public:
       return false;
     }
     case SDL_KEYDOWN: {
-      key_pressed_[sdl_event.key.keysym.scancode] = true;
       for (const auto& handler :
            key_down_handlers_[sdl_event.key.keysym.scancode]) {
         handler();
       }
-      break;
-    }
-    case SDL_KEYUP: {
-      key_pressed_[sdl_event.key.keysym.scancode] = false;
       break;
     }
     }
@@ -148,7 +145,6 @@ private:
   bool open_ = true;
   int width_;
   int height_;
-  std::unordered_map<SDL_Scancode, bool> key_pressed_;
   std::unordered_map<SDL_Scancode, std::vector<std::function<void()>>>
       key_down_handlers_;
   TTF_Font* font_;
